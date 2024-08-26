@@ -1,77 +1,118 @@
 mod types {
-    pub mod flashcard;
+    pub mod config_file;
+    pub mod flashcard_file;
 }
-mod yaml_parse;
 mod assessment;
+mod config;
+mod logger;
+mod run_flashcards;
+mod yaml_parse;
 
-use ansi_term::{Colour, Style};
-use assessment::print_message_based_on_score;
-use clap::Parser;
-use types::flashcard::FlashcardFile;
-use yaml_parse::parse_flashcards_yaml;
 use std::fs;
 
-use crate::assessment::print_correct_of_total;
+use clap::{Parser, Subcommand};
+use config::{
+    add_flashcard_file, get_list_of_flashcard_files, get_matching_flashcard_file_location,
+    list_flashcard_files,
+};
+use inquire::{InquireError, Select};
+use types::flashcard_file::QuestionFile;
+use yaml_parse::parse_flashcards_yaml;
 
-#[derive(Parser, Debug)]
+use crate::run_flashcards::run_flashcards;
+
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Args {
-    /// File to read flashcards from
-    flashcards_file: Option<String>,
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-const FAILURE_COLOUR: Colour = Colour::Red;
-const SUCCESS_COLOUR: Colour = Colour::Cyan;
+#[derive(Subcommand)]
+enum Commands {
+    AddFlashcardFile { filename: Option<String> },
+    Run { questionset_name: Option<String> },
+    List,
+}
 
 fn main() {
-    let args = Args::parse();
+    let cli = Cli::parse();
 
-    // let blerg = args.flashcards_file.as_deref();
+    match &cli.command {
+        Commands::AddFlashcardFile { filename } => match filename {
+            Some(filename) => add_flashcard_file(filename.clone()),
+            None => println!("No filename specified"),
+        },
+        Commands::Run { questionset_name } => match questionset_name {
+            Some(questionset_name) => {
+                println!("Running flashcards: {}", questionset_name);
 
-    let flashcards_file = match args.flashcards_file {
-        Some(flashcards_file) => flashcards_file,
-        None => {
-            println!("No flashcards file specified");
-            return;
-        }
-    };
+                let flashcard_file_location =
+                    get_matching_flashcard_file_location(questionset_name.to_string());
 
-    let raw_flashcards_yaml_result = fs::read_to_string(&flashcards_file);
-    
-    let raw_flashcards_yaml = match raw_flashcards_yaml_result {
-        Ok(raw_flashcards_yaml) => raw_flashcards_yaml,
-        Err(e) => {
-            println!("Error reading flashcards file: {}", e);
-            println!("Attempted to read file: {}", flashcards_file);
-            return;
-        }
-    };
-    let flashcards_file: FlashcardFile = parse_flashcards_yaml(raw_flashcards_yaml);
+                match flashcard_file_location {
+                    Some(flashcard_file_location) => {
+                        let raw_flashcards_yaml_result =
+                            fs::read_to_string(&flashcard_file_location);
 
-    let number_of_flashcards = flashcards_file.flashcards.len();
-    let mut number_of_flashcards_correct = 0;
+                        let raw_flashcards_yaml = match raw_flashcards_yaml_result {
+                            Ok(raw_flashcards_yaml) => raw_flashcards_yaml,
+                            Err(e) => {
+                                println!("Error reading flashcards file: {}", e);
+                                println!("Attempted to read file: {}", flashcard_file_location);
+                                return;
+                            }
+                        };
 
-    for flashcard in flashcards_file.flashcards {
-        println!("====================");
-        println!("{}", flashcard.question);
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+                        let flashcards_file: QuestionFile =
+                            parse_flashcards_yaml(raw_flashcards_yaml);
+                        run_flashcards(flashcards_file);
+                    }
+                    None => {}
+                }
+            }
+            None => {
+                println!("No flashcards file specified");
+                let question_sets = get_list_of_flashcard_files();
+                let question_set_names: Vec<&str> =
+                    question_sets.iter().map(|s| s.name.as_str()).collect();
 
-        if input.trim() == flashcard.answer {
-            number_of_flashcards_correct += 1;
-            println!(
-                "{}",
-                Style::new().bold().fg(SUCCESS_COLOUR).paint("Correct!"),
-            );
-        } else {
-            println!(
-                "{}",
-                Style::new().bold().fg(FAILURE_COLOUR).paint("Incorrect :("),
-            );
-            println!("Correct answer: {}", flashcard.answer);
-        }
+                let ans: Result<&str, InquireError> =
+                    Select::new("Which flashcards to do?", question_set_names).prompt();
+
+                match ans {
+                    Ok(choice) => {
+                        let flashcard_file_location =
+                            get_matching_flashcard_file_location(choice.to_string());
+
+                        match flashcard_file_location {
+                            Some(flashcard_file_location) => {
+                                let raw_flashcards_yaml_result =
+                                    fs::read_to_string(&flashcard_file_location);
+
+                                let raw_flashcards_yaml = match raw_flashcards_yaml_result {
+                                    Ok(raw_flashcards_yaml) => raw_flashcards_yaml,
+                                    Err(e) => {
+                                        println!("Error reading flashcards file: {}", e);
+                                        println!(
+                                            "Attempted to read file: {}",
+                                            flashcard_file_location
+                                        );
+                                        return;
+                                    }
+                                };
+
+                                let flashcards_file: QuestionFile =
+                                    parse_flashcards_yaml(raw_flashcards_yaml);
+                                run_flashcards(flashcards_file);
+                            }
+                            None => {}
+                        }
+                    }
+                    Err(_) => println!("There was an error, please try again"),
+                }
+            }
+        },
+        Commands::List => list_flashcard_files(),
     }
-    let proportion_correct = number_of_flashcards_correct as f32 / number_of_flashcards as f32;
-    print_correct_of_total(number_of_flashcards_correct, number_of_flashcards);
-    print_message_based_on_score(proportion_correct);
 }

@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct FlashcardFile {
-  pub flashcards: Vec<Flashcard>,
+pub struct ConfigFile {
+    pub flashcard_files:Vec<ConfigFlashcardFile>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct Flashcard {
-  pub question: String,
-  pub answer: String,
-  // pub tags: Vec<String>,
+pub struct ConfigFlashcardFile {
+    pub location: String,
+    pub name: String,
 }
