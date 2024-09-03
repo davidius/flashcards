@@ -1,13 +1,16 @@
 [package]
 name = "flashcards"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4.38"
+chrono-tz = "0.9.0"
 clap = { version = "4.5.16", features = ["derive"] }
-inquire = "0.7.5"
+dateparser = "0.2.1"
+inquire = { version = "0.7.5", features = ["date"] }
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yaml = "0.9.34+deprecated"
 ansi_term = "0.12.1"
